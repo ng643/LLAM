@@ -316,6 +316,20 @@ def recipe_diag() -> tuple[str, str, list]:
         ("trainer on CPU, LoRA trainable (3 steps)", "train_loop_robot.py",
          argv + ["--trainable", "lora", "--lora-rank", "8",
                  "--out", "/kaggle/working/robot_lora_diag.pt"], False),
+        # the new flags: fine-tune from the LoRA checkpoint above with --vary on
+        # (plain/shuf split in every log line), a held lr, a mid-run save
+        ("--init-from + --vary 1.0 + plain/shuf log + --ckpt-every (4 steps)",
+         "train_loop_robot.py",
+         argv + ["--trainable", "lora", "--lora-rank", "8",
+                 "--init-from", "/kaggle/working/robot_lora_diag.pt",
+                 "--vary", "1.0", "--steps", "4", "--log-every", "1",
+                 "--lr-hold", "0.5", "--lr-floor", "0.1", "--ckpt-every", "2",
+                 "--out", "/kaggle/working/robot_init_diag.pt"], False),
+        ("EXPECTED TO FAIL: --init-from with a different LoRA rank",
+         "train_loop_robot.py",
+         argv + ["--trainable", "lora", "--lora-rank", "16",
+                 "--init-from", "/kaggle/working/robot_lora_diag.pt",
+                 "--out", "/kaggle/working/robot_bad_init.pt"], False),
         ("bridge self-test on CPU", "mujoco_env_bridge.py",
          ["--self-test", "--model", "tiny", "--device", "cpu"], False),
         # the live stack on CPU: JSON-only control, speech after the state,
@@ -410,9 +424,10 @@ KERNEL_SOURCES: dict[str, list[str]] = {}
 DATASET_SOURCES = {"live": [f"{USER}/llmm-ckpt-v2"]}
 
 
-def _ablate_args(vary: bool, libero: bool) -> list[str]:
-    """QWEN_ARGS at 1500 steps with --vary and/or --libero switched off."""
-    a, out, i = [], [], 0
+def _ablate_args(vary: bool, libero: bool, steps: int = 1500,
+                 out: str = "/kaggle/working/robot_ablate.pt") -> list[str]:
+    """QWEN_ARGS at `steps` steps with --vary and/or --libero switched off."""
+    a, i = [], 0
     while i < len(QWEN_ARGS):
         t = QWEN_ARGS[i]
         if t == "--vary":
@@ -423,7 +438,7 @@ def _ablate_args(vary: bool, libero: bool) -> list[str]:
             continue
         a.append(t)
         i += 1
-    a += ["--steps", "1500", "--out", "/kaggle/working/robot_ablate.pt"]
+    a += ["--steps", str(steps), "--out", out]
     if vary:
         a += ["--vary"]
     if libero:
@@ -446,6 +461,22 @@ def _recipe_ablate(tag: str, vary: bool, libero: bool):
                 "learned: 1500-step retrains with one feature at a time.")
     return r
 
+def recipe_longvary() -> tuple[str, str, list, str]:
+    """The user's test: plain --vary (no LIBERO) trained long enough to
+    generalise.  12k steps (~5.7 h at the measured 1.70 s/it), lr held at the
+    peak for half the run and ending at 0.1x instead of 0.05x, a checkpoint
+    every 1500 steps, and the log splits axis_x/axis_y/speed CE + accuracy
+    into shuffled-option rows vs plain rows."""
+    a = _ablate_args(True, False, steps=12000,
+                     out="/kaggle/working/robot_longvary.pt")
+    i = a.index("--eval-every")
+    a[i + 1] = "600"
+    a += ["--lr-hold", "0.5", "--lr-floor", "0.1", "--ckpt-every", "1500"]
+    return ("llmm-longvary", "llmm longvary",
+            [("long plain --vary retrain, 12k steps", "train_loop_robot.py", a, True)],
+            "Does interface variation generalise with a long run? 12k steps, "
+            "--vary 0.75, no LIBERO, lr hold 0.5 / floor 0.1.")
+
 CELL_FIND_CKPT = '''
 # ── locate the supervised checkpoint in the mounted kernel output ─────────────
 import pathlib, os
@@ -457,13 +488,37 @@ if os.path.lexists("/tmp/robot_kaggle.pt"):
 os.symlink(hits[0], "/tmp/robot_kaggle.pt")
 '''
 
+# the follow-up fine-tune reads longvary's checkpoint from its kernel output
+CELL_FIND_LONGVARY = CELL_FIND_CKPT.replace("robot_kaggle.pt", "robot_longvary.pt")
+KERNEL_SOURCES["vary_libero_ft"] = [f"{USER}/llmm-longvary"]
+
+
+def recipe_vary_libero_ft() -> tuple[str, str, list, str]:
+    """After longvary: fine-tune its checkpoint with --vary AND 30 % LIBERO
+    batches (LIBERO rows are varied by their own sampler).  2500 steps at
+    lr 1e-4 (held 30 %, floor 0.1), ~1.2 h.  The log splits plain/shuf for
+    synthetic rows and lib_plain/lib_shuf for LIBERO rows."""
+    a = _ablate_args(True, True, steps=2500, out="/kaggle/working/robot_varylib.pt")
+    a[a.index("--lr") + 1] = "1e-4"
+    a[a.index("--eval-every") + 1] = "500"
+    a += ["--init-from", "/tmp/robot_longvary.pt", "--lr-hold", "0.3",
+          "--lr-floor", "0.1", "--ckpt-every", "1000"]
+    return ("llmm-varylib-ft", "llmm varylib ft", [
+        ("convert all LIBERO episodes (40 tasks)", "libero_convert.py",
+         ["--episodes", "0", "--out", "/kaggle/working/libero_conv"], True),
+        ("fine-tune longvary with --vary + LIBERO 0.3, 2500 steps",
+         "train_loop_robot.py", a, True),
+    ], "Follow-up to llmm-longvary: add LIBERO (varied) on top of the varied "
+       "synthetic checkpoint.")
+
 
 RECIPES = {"smoke": recipe_smoke, "qwen": recipe_qwen,
            "qwenprobe": recipe_qwenprobe, "diag": recipe_diag,
            "libero": recipe_libero, "live": recipe_live,
            "ablate_base": _recipe_ablate("base", False, False),
            "ablate_vary": _recipe_ablate("vary", True, False),
-           "ablate_libero": _recipe_ablate("libero", False, True)}
+           "ablate_libero": _recipe_ablate("libero", False, True),
+           "longvary": recipe_longvary, "vary_libero_ft": recipe_vary_libero_ft}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # probe: does Kaggle's log stream deliver a RUNNING session's stdout live, and
@@ -542,7 +597,8 @@ def main() -> int:
               gpu=args.action not in ("diag", "libero"),
               sources=KERNEL_SOURCES.get(args.action),
               datasets=DATASET_SOURCES.get(args.action),
-              pre=CELL_FIND_CKPT if args.action == "live" else "")
+              pre=(CELL_FIND_CKPT if args.action == "live" else
+                   CELL_FIND_LONGVARY if args.action == "vary_libero_ft" else ""))
         r = _run(["kaggle", "kernels", "push", "-p", str(STAGE)], capture_output=True)
         print(r.stdout[-3000:], r.stderr[-2000:])
         return 0 if r.returncode == 0 else 1

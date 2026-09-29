@@ -1682,6 +1682,9 @@ def shown_targets(labels: Dict[str, torch.Tensor],
 # Label indices are positional (LABEL_SOURCES semantics), so a bank that renames
 # the options still decodes as long as it keeps their order.
 JSON_ACTION_QIDS = ("axis_x", "axis_y", "gripper", "intent")
+# Questions whose answer must be read off the NUMBERS in the state (not a
+# near-constant class): the logged shuffled-vs-plain split tracks these.
+NUMERIC_QIDS = ("axis_x", "axis_y", "speed")
 
 
 def json_action_from_labels(labels: Dict[str, Any],
@@ -3311,6 +3314,13 @@ def make_step_fn(model, opt, scaler, accel, tau: float, clip: float,
     log shows nothing until the step ends.
     """
     tstate = {"step": 0}
+    # Diagnostic (no gradient): CE / accuracy of the NUMBER-dependent questions
+    # split by whether that row's options were shuffled.  If the shuffle is
+    # being learned, "shuf" falls toward "plain"; a delayed jump shows here
+    # long before it moves the default-interface eval.  Read + reset by the
+    # logger through `_step.numq`.  LIBERO rows go to "lib_plain"/"lib_shuf"
+    # (synthetic keeps the plain names, comparable with the longvary log).
+    numq = {k: [0.0, 0, 0] for k in ("plain", "shuf", "lib_plain", "lib_shuf")}
 
     def _step(micro: Sequence[Episode], carry: Optional[torch.Tensor]) -> Dict[str, Any]:
         tstate["step"] += 1
@@ -3354,6 +3364,31 @@ def make_step_fn(model, opt, scaler, accel, tau: float, clip: float,
                     speech_ce=sce, text_weight=text_weight,
                     task_ids=mb.tasks, task_weight=task_weight,
                     q_class_weights=mb.q_weights)
+                with torch.no_grad():
+                    for qid in NUMERIC_QIDS:
+                        lg_d, lab_d = out.q_logits.get(qid), q_labels.get(qid)
+                        if lg_d is None or lab_d is None:
+                            continue
+                        K_d = lg_d.shape[-1]
+                        ce_d = F.cross_entropy(lg_d.float().reshape(-1, K_d),
+                                               lab_d.reshape(-1), reduction="none"
+                                               ).view(lab_d.shape[0], -1)
+                        hit = (lg_d.argmax(-1).reshape(lab_d.shape[0], -1)
+                               == lab_d.reshape(lab_d.shape[0], -1))
+                        perm_d = (mb.opt_perm or {}).get(qid)
+                        if perm_d is None:
+                            sh = torch.zeros(lab_d.shape[0], dtype=torch.bool,
+                                             device=ce_d.device)
+                        else:
+                            p_d = perm_d.to(ce_d.device)
+                            sh = (p_d != torch.arange(p_d.shape[1], device=p_d.device)
+                                  ).any(-1)
+                        pre = "lib_" if getattr(mb, "source", "") == "libero" else ""
+                        for key, m in ((pre + "shuf", sh), (pre + "plain", ~sh)):
+                            if bool(m.any()):
+                                numq[key][0] += float(ce_d[m].sum())
+                                numq[key][1] += int(hit[m].sum())
+                                numq[key][2] += int(ce_d[m].numel())
             if show:
                 _sync(accel)
                 print(f"    [trace]   loss {time.time()-t_phase:.2f}s · "
@@ -3409,6 +3444,7 @@ def make_step_fn(model, opt, scaler, accel, tau: float, clip: float,
             scaler.update()
         agg["grad_norm"] = pre_clip              # measured BEFORE clipping
         return agg
+    _step.numq = numq
     return _step
 
 
@@ -3419,9 +3455,15 @@ def run_train(cfg, accel, model, tok, world,
     opt = torch.optim.AdamW(trainable, lr=cfg.lr, betas=(0.9, 0.95),
                             weight_decay=0.01, eps=1e-8)
     warmup = max(1, int(0.05 * cfg.steps))
+    # --lr-hold F keeps the peak for F·steps after warm-up before the cosine
+    # starts; --lr-floor is where the cosine ends (fraction of --lr).  The old
+    # schedule is hold 0 / floor 0.05.
+    hold_end = warmup + int(max(0.0, getattr(cfg, "lr_hold", 0.0)) * cfg.steps)
+    floor = float(getattr(cfg, "lr_floor", 0.05))
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: (s + 1) / warmup if s < warmup else
-        0.05 + 0.95 * 0.5 * (1 + math.cos(math.pi * (s - warmup) / max(1, cfg.steps - warmup))))
+        opt, lambda s: (s + 1) / warmup if s < warmup else 1.0 if s < hold_end else
+        floor + (1 - floor) * 0.5 * (1 + math.cos(
+            math.pi * (s - hold_end) / max(1, cfg.steps - hold_end))))
     scaler = None
     if accel.amp and accel.scaler:
         try:
@@ -3542,6 +3584,13 @@ def run_train(cfg, accel, model, tok, world,
                 extra += f" lib={n_lib}/{step}"
             if sampler is not None:
                 extra += f" var={n_var}/{step}"
+            nq = getattr(step_fn, "numq", None)
+            if nq is not None and any(v[2] for v in nq.values()):
+                for key in ("plain", "shuf", "lib_plain", "lib_shuf"):
+                    s_, c_, n_ = nq[key]
+                    if n_:
+                        extra += f" {key}=ce{s_ / n_:.3f}/acc{c_ / n_:.2f}/n{n_}"
+                    nq[key][:] = [0.0, 0, 0]
             print(f"  {step:5d}/{cfg.steps}  loss={stats['loss']:.4f} "
                   f"(pov={stats['ponder']:.3f}{extra}) "
                   f"cycles={stats['mean_cycles']:.2f}/{stats['mean_ponder']:.2f} "
@@ -3556,6 +3605,10 @@ def run_train(cfg, accel, model, tok, world,
             evaluate(cfg, accel, model, tok, SensorWorld(cfg.seed + 991, world.noise),
                      step, libero=libero)
             guard.reclaim(step, force=True)         # eval reuses the same pool
+        save_every = int(getattr(cfg, "ckpt_every", 0) or 0)
+        if save_every and step % save_every == 0 and step < cfg.steps:
+            save_checkpoint(cfg, model)
+            print(f"  [save] step {step} -> {cfg.out}", flush=True)
     guard.reclaim(step, force=True)
     save_checkpoint(cfg, model)
     print(f"  done in {(time.time()-t0)/60:.1f} min   "
@@ -5298,6 +5351,16 @@ def build_parser() -> argparse.ArgumentParser:
     g = p.add_argument_group("optimisation")
     g.add_argument("--steps", type=int, default=1000)
     g.add_argument("--lr", type=float, default=5e-4)
+    g.add_argument("--lr-hold", type=float, default=0.0,
+                   help="fraction of --steps held at peak lr after warm-up "
+                        "before the cosine decay starts")
+    g.add_argument("--lr-floor", type=float, default=0.05,
+                   help="final lr as a fraction of --lr")
+    g.add_argument("--ckpt-every", type=int, default=0,
+                   help="also save the checkpoint every N steps (overwrites --out)")
+    g.add_argument("--init-from", default=None, metavar="CKPT",
+                   help="start from this checkpoint's trainable tensors (fine-tune); "
+                        "optimiser and lr schedule start fresh")
     g.add_argument("--tau", type=float, default=1e-2, help="ponder penalty weight")
     g.add_argument("--clip", type=float, default=1.0)
     g.add_argument("--log-every", type=int, default=10)
@@ -5369,6 +5432,32 @@ def main() -> int:
                 print(f"  [libero] WARNING: could not load {cfg.libero} "
                       f"({type(exc).__name__}: {exc}) — continuing synthetic-only")
                 libero = None
+    init = getattr(cfg, "init_from", None)
+    if init:
+        if not os.path.isfile(init):
+            raise SystemExit(f"--init-from: {init} not found")
+        payload = torch.load(init, map_location="cpu")
+        if not isinstance(payload, dict) or "trainable_state" not in payload:
+            raise SystemExit(f"--init-from: {init} is not a train_loop_robot checkpoint")
+        src_args = payload.get("args", {}) or {}
+        diff = [f"{k}: ckpt {src_args.get(k)!r} vs now {getattr(cfg, k, None)!r}"
+                for k in ("trainable", "lora_rank", "lora_alpha", "loops",
+                          "recurrent_layers", "fusion_heads", "carry", "untie_lm_head")
+                if k in src_args and src_args.get(k) != getattr(cfg, k, None)]
+        if diff:
+            raise SystemExit("--init-from: architecture differs from the checkpoint "
+                             "(pass matching flags): " + "; ".join(diff))
+        missing, unexpected = load_trainable_state(model, payload, qbind,
+                                                   where="--init-from")
+        own = {n for n, p in model.named_parameters() if p.requires_grad}
+        got = own & set(payload["trainable_state"])
+        print(f"  init from   : {init} · {len(got)}/{len(own)} trainable tensors "
+              f"loaded · {len(unexpected)} unexpected · optimiser + lr schedule "
+              f"start fresh")
+        if len(got) < len(own):
+            raise SystemExit(f"--init-from: only {len(got)}/{len(own)} trainable "
+                             f"tensors found in {init}")
+        del payload
     run_train(cfg, accel, model, tok, world, libero=libero)
     return 0
 
