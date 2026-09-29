@@ -1,0 +1,48 @@
+# checkpoints and weights (hundreds of MB each)
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+
+# logs and run output
+*.log
+MUJOCO_LOG.TXT
+*.png
+*.mp4
+
+# Kaggle staging, pulled outputs, dataset uploads (never commit tokens)
+_kaggle_kernel/
+_kaggle_out/
+_kaggle_ckpt_*/
+DevLLMM_kaggle_out/
+kaggle.json
+access_token
+
+# local backups and throwaway scripts
+_bak_*/
+_compat.py
+_new_binding.py
+_region.py
+
+# converted datasets
+libero_conv*/
+episodes.jsonl
+
+# python / tooling
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

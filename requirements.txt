@@ -1,0 +1,9 @@
+# Versions used on Kaggle (2x T4, fp16). Install the torch build that matches your GPU.
+torch>=2.4
+transformers>=4.45
+numpy
+mujoco>=3.1
+# libero_convert.py only
+pandas
+pyarrow
+huggingface_hub

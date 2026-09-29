@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLMM · Looped ACT Text-Native Robot Policy</title>
+<style>
+:root{
+  --bg:#0b0f17;--panel:#121826;--panel2:#171f30;--line:#243049;--ink:#dfe6f3;--dim:#8a97b0;
+  --frozen:#4b6fa8;--lora:#b07cff;--new:#2fd1a0;--loop:#ff9f43;--io:#5cc8ff;--warn:#ff5d73;--gold:#ffd166;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Segoe UI",system-ui,sans-serif}
+header{padding:28px 32px 10px}
+h1{margin:0;font-size:24px;letter-spacing:.3px}
+h1 small{color:var(--dim);font-weight:400;font-size:14px;margin-left:8px}
+.sub{color:var(--dim);max-width:1100px;margin-top:6px}
+nav{position:sticky;top:0;z-index:10;background:rgba(11,15,23,.92);backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line);padding:8px 32px;display:flex;gap:6px;flex-wrap:wrap}
+nav a{color:var(--dim);text-decoration:none;padding:5px 11px;border-radius:6px;font-size:13px}
+nav a:hover,nav a.on{background:var(--panel2);color:var(--ink)}
+section{padding:22px 32px 30px;border-bottom:1px solid var(--line)}
+h2{font-size:18px;margin:0 0 4px}
+h2 .n{color:var(--loop);margin-right:8px;font-family:Consolas,monospace}
+.lead{color:var(--dim);margin:0 0 16px;max-width:1100px}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr)}
+.g2e{grid-template-columns:1fr 1fr}
+@media(max-width:1100px){.g2,.g2e{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h3{margin:0 0 8px;font-size:14px;color:var(--gold);font-weight:600}
+code,.mono{font-family:Consolas,"Cascadia Mono",monospace;font-size:12.5px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;margin-right:4px;border:1px solid}
+.p-frozen{color:var(--frozen);border-color:var(--frozen)}
+.p-lora{color:var(--lora);border-color:var(--lora)}
+.p-new{color:var(--new);border-color:var(--new)}
+.p-loop{color:var(--loop);border-color:var(--loop)}
+.p-io{color:var(--io);border-color:var(--io)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-bottom:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+svg text{font-family:"Segoe UI",system-ui,sans-serif}
+.node{cursor:pointer}
+.node rect{transition:stroke-width .15s,filter .15s}
+.node:hover rect,.node.sel rect{stroke-width:2.6;filter:drop-shadow(0 0 6px rgba(255,255,255,.25))}
+.flow{stroke-dasharray:5 6;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-22}}
+#detail h3{font-size:16px}
+#detail .kv{display:grid;grid-template-columns:120px 1fr;gap:3px 10px;font-size:12.5px;margin:10px 0}
+#detail .kv div:nth-child(odd){color:var(--dim)}
+#detail pre{background:#0a0e16;border:1px solid var(--line);border-radius:6px;padding:9px;overflow:auto;font-size:12px;margin:8px 0 0}
+label.ctl{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--dim);margin:6px 0}
+label.ctl span.v{font-family:Consolas,monospace;color:var(--ink);min-width:56px;text-align:right}
+input[type=range]{flex:1;accent-color:var(--loop)}
+button,select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+button:hover{border-color:var(--loop)}
+button.on{background:var(--loop);color:#1a1205;border-color:var(--loop)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tokens{display:flex;flex-wrap:wrap;gap:3px;font-family:Consolas,monospace;font-size:12px;line-height:1}
+.tok{padding:4px 5px;border-radius:4px;background:#1b2436;border:1px solid transparent;cursor:default;white-space:pre}
+.tok.carry{background:#3a2a10;color:var(--gold)}
+.tok.instr{background:#152a3a;color:#9fdcff}
+.tok.schema{background:#1d1938;color:#c7b4ff}
+.tok.state{background:#1b2436;color:#cfd8ea}
+.tok.qm{background:#11352b;color:var(--new);font-weight:700}
+.tok.sm{background:#3d1a22;color:#ff9aa9;font-weight:700}
+.tok.hl{border-color:var(--gold)}
+.tok.dim{opacity:.28}
+.stepsep{width:100%;height:0}
+.bar{height:16px;border-radius:3px;background:var(--loop);transition:width .25s}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--dim);font-weight:500}
+.note{font-size:12px;color:var(--dim);margin-top:8px}
+.warn{color:var(--warn)}
+.ok{color:var(--new)}
+.json{background:#0a0e16;border:1px solid var(--line);border-radius:6px;padding:10px;font-family:Consolas,monospace;font-size:12px;white-space:pre;overflow:auto;max-height:340px}
+.json .k{color:#9fdcff}.json .s{color:var(--new)}.json .num{color:var(--gold)}
+canvas{width:100%;display:block;background:#0a0e16;border:1px solid var(--line);border-radius:6px}
+.stat{display:inline-block;margin:0 16px 6px 0}
+.stat b{display:block;font-size:20px;font-family:Consolas,monospace}
+.stat span{color:var(--dim);font-size:11.5px}
+.optrow{display:grid;grid-template-columns:90px 1fr 52px;gap:8px;align-items:center;font-size:12px;margin:3px 0}
+.optrow .track{background:#0a0e16;border-radius:3px;height:14px;overflow:hidden}
+.optrow .fill{height:100%;background:var(--new);transition:width .25s}
+.optrow.top .fill{background:var(--gold)}
+</style>
+</head>
+<body>
+<header>
+  <h1>LLMM — Looped ACT Text-Native Robot Policy <small>Qwen2.5-0.5B · LoRA r16 · ACT ≤ 6 cycles · JSON questionnaire read-out</small></h1>
+  <div class="sub">An interactive guide to the architecture in <code>train_loop_robot.py</code>. The policy reads a <b>prompt</b> (instruction + JSON schema) and one fixed-width <b>state sentence</b> per control step. It loops the last 2 trunk layers under Adaptive Computation Time, then <b>answers each question from its own LM head</b>, restricted to that question's option tokens. Click anything.</div>
+</header>
+<nav id="nav">
+  <a href="#overview">1 · Data flow</a><a href="#sequence">2 · Token sequence</a><a href="#act">3 · ACT loop</a>
+  <a href="#fusion">4 · Gates &amp; LoRA</a><a href="#readout">5 · Questionnaire read-out</a><a href="#training">6 · Training run</a>
+</nav>
+
+<!-- ================================================================ 1 -->
+<section id="overview">
+  <h2><span class="n">1</span>End-to-end data flow</h2>
+  <p class="lead">Every block maps to code. Colour shows trainability. The orange box is the recurrent block, re-applied until each position halts. Click a block for its shapes, init and source; press <b>Animate</b> to trace one control step.</p>
+  <div class="legend">
+    <span><i style="background:var(--frozen)"></i>frozen pretrained</span>
+    <span><i style="background:var(--lora)"></i>frozen + LoRA (trainable A·B)</span>
+    <span><i style="background:var(--new)"></i>new trainable module</span>
+    <span><i style="background:var(--loop)"></i>ACT loop</span>
+    <span><i style="background:var(--io)"></i>input / output (data)</span>
+  </div>
+  <div class="grid g2">
+    <div class="card" style="padding:8px">
+      <div class="row" style="padding:4px 6px 8px"><button id="animBtn">▶ Animate one step</button><span class="note" id="animNote" style="margin:0"></span></div>
+      <svg id="flow" viewBox="0 0 900 760" width="100%"></svg>
+    </div>
+    <div class="card" id="detail"><h3>Select a block</h3><p class="note">Every block shows its tensor shapes, its initialisation, and the function that implements it.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ 2 -->
+<section id="sequence">
+  <h2><span class="n">2</span>What the transformer actually reads</h2>
+  <p class="lead">No sensor projector and no continuous slots: the state is <i>text</i>, embedded by the same frozen table as the prompt. Each control step renders as a fixed-width sentence (<code>render_state</code>), followed by one answer marker per question and closed by <code>&lt;|im_end|&gt;</code>. Questions are read at their markers, and the action at the closing marker. Move the sliders to re-render the sentence, and hover a token to see its role.</p>
+  <div class="grid g2">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <label class="ctl" style="margin:0">window steps S <input type="range" id="sS" min="1" max="8" value="3" style="width:120px"><span class="v" id="vS">3</span></label>
+        <label class="row" style="font-size:12.5px;color:var(--dim)"><input type="checkbox" id="sCarry" checked> carry token</label>
+        <select id="sTask"><option>reach</option><option selected>grasp</option><option>throw</option><option>push</option></select>
+        <select id="sColor"><option>red</option><option>green</option><option selected>blue</option><option>yellow</option></select>
+      </div>
+      <div class="tokens" id="tokens"></div>
+      <div class="note">Tokens are split on whitespace for readability. Qwen's BPE splits numbers differently, which is why <code>collate</code> computes marker positions (<code>ans_pos</code>) from the real tokenization.</div>
+    </div>
+    <div class="card">
+      <h3>Live state (step 1)</h3>
+      <label class="ctl">tool x<input type="range" id="tx" min="-1" max="1" step="0.01" value="0.12"><span class="v" id="vtx"></span></label>
+      <label class="ctl">tool y<input type="range" id="ty" min="-1" max="1" step="0.01" value="-0.30"><span class="v" id="vty"></span></label>
+      <label class="ctl">tool z<input type="range" id="tz" min="0" max="1" step="0.01" value="0.60"><span class="v" id="vtz"></span></label>
+      <label class="ctl">vel x<input type="range" id="vx" min="-1" max="1" step="0.01" value="0.05"><span class="v" id="vvx"></span></label>
+      <label class="ctl">grip<input type="range" id="gp" min="0" max="1" step="1" value="0"><span class="v" id="vgp"></span></label>
+      <div id="hoverInfo" class="note" style="min-height:64px;border-top:1px solid var(--line);padding-top:8px;margin-top:10px">Hover a token.</div>
+      <div class="note mono" id="idxInfo"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 3 -->
+<section id="act">
+  <h2><span class="n">3</span>ACT: halting, the convex combination, and ponder cost</h2>
+  <p class="lead">Each cycle re-applies layers 22–23 to the same hidden state (it is never reset). The halting head emits <code>p_n = σ(W·h_n + b)</code>. A position halts on the first cycle where <code>Σp ≥ 1 − ε</code>; that cycle gets the remainder <code>R = 1 − Σp</code> (Graves). The output is <code>Σ α_n·h_n</code> with <code>Σα = 1</code> exactly (logged as <code>mass_err</code>). The compute cost <code>ponder = Σ n·α_n</code> enters the loss as <code>τ·ponder</code>, so it is penalised, never forced.</p>
+  <div class="grid g2e">
+    <div class="card">
+      <h3>Halting probabilities per cycle</h3>
+      <div id="pSliders"></div>
+      <label class="ctl">ε (act_eps)<input type="range" id="eps" min="0" max="0.2" step="0.01" value="0.01"><span class="v" id="vEps"></span></label>
+      <label class="ctl">τ (--tau)<input type="range" id="tau" min="0" max="0.1" step="0.005" value="0.01"><span class="v" id="vTau"></span></label>
+      <div class="row" style="margin-top:8px">
+        <button data-preset="easy">easy window (run avg ≈1.1)</button>
+        <button data-preset="hard">hard window</button>
+        <button data-preset="never">never halts</button>
+        <button data-preset="init">step-0 init</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Resulting α weights (what reaches the read-out)</h3>
+      <div id="alphaBars"></div>
+      <div style="margin-top:10px" id="actStats"></div>
+      <canvas id="traj" height="210" style="margin-top:10px"></canvas>
+      <div class="note">A 2-D projection of a latent trajectory <code>h₁…hₙ</code> (illustrative geometry). The ringed point is the ACT output <code>Σα·h</code>, which always lies inside the convex hull of the states it mixed.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 4 -->
+<section id="fusion">
+  <h2><span class="n">4</span>Zero-init gates &amp; LoRA: bit-identical to the trunk at step 0</h2>
+  <p class="lead">Every add-on starts inert. <code>PromptFusion</code> returns <code>h + tanh(g)·CrossAttn(state → prompt)</code> with <code>g = 0</code>. The sinusoidal cycle tag enters as <code>tanh(g_c)·tag(n)</code> with <code>g_c = 0</code>, and LoRA's <code>B</code> is zero. Only one factor of each product is zeroed: <code>out_proj</code> keeps its default init, so the gate still receives a gradient.</p>
+  <div class="grid g2e">
+    <div class="card">
+      <h3>Gated cross-attention (state region attends to prompt)</h3>
+      <label class="ctl">fusion.gate g<input type="range" id="gG" min="-3" max="3" step="0.01" value="0"><span class="v" id="vG"></span></label>
+      <canvas id="gateCv" height="200"></canvas>
+      <div class="note" id="gateNote"></div>
+    </div>
+    <div class="card">
+      <h3>LoRA on q/k/v/o/gate/up/down_proj of all 24 layers</h3>
+      <label class="ctl">rank r<input type="range" id="lr" min="1" max="64" step="1" value="16"><span class="v" id="vlr"></span></label>
+      <label class="ctl">alpha α<input type="range" id="la" min="1" max="128" step="1" value="32"><span class="v" id="vla"></span></label>
+      <label class="ctl">‖B‖ (0 at init)<input type="range" id="lb" min="0" max="1" step="0.01" value="0"><span class="v" id="vlb"></span></label>
+      <div id="loraOut"></div>
+      <pre class="mono" style="background:#0a0e16;border:1px solid var(--line);border-radius:6px;padding:9px;font-size:12px;margin-top:8px">y = W x + (α/r) · B (A x)        # LoRALinear.forward
+W frozen · A ~ init · B = 0  ⇒  y = W x exactly</pre>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 5 -->
+<section id="readout">
+  <h2><span class="n">5</span>Speaking through the LM head: the JSON questionnaire</h2>
+  <p class="lead">No per-question head exists. Each answer is <code>softmax(h_marker · W[option_ids]ᵀ)</code>, where <code>W</code> is the LM head (151,936 × 896) restricted to that question's option tokens (<code>QuestionBinding.option_weight</code>). The schema is <b>data</b>: the self-test sends a different questionnaire (<code>axis_x</code> + a 4-level <code>tilt</code>) through the same weights. A small MLP head reads the 6 motor actions, and <code>task_head</code> reads the 4 tasks.</p>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Scenario: target block relative to the tool</h3>
+      <label class="ctl">dx<input type="range" id="rdx" min="-1" max="1" step="0.01" value="0.40"><span class="v" id="vrdx"></span></label>
+      <label class="ctl">dy<input type="range" id="rdy" min="-1" max="1" step="0.01" value="-0.05"><span class="v" id="vrdy"></span></label>
+      <label class="ctl">dz<input type="range" id="rdz" min="-1" max="1" step="0.01" value="-0.30"><span class="v" id="vrdz"></span></label>
+      <label class="ctl">holding<input type="range" id="rgr" min="0" max="1" step="1" value="0"><span class="v" id="vrgr"></span></label>
+      <label class="ctl">sharpness<input type="range" id="rtemp" min="0.5" max="8" step="0.1" value="3"><span class="v" id="vrtemp"></span></label>
+      <div id="qBars" style="margin-top:10px"></div>
+      <div class="note">⚠ These probabilities come from a hand-written heuristic that mimics the expert labels (<code>LABEL_SOURCES</code>), NOT from the trained model. They only show the mechanism. Real per-question accuracy is in §6.</div>
+    </div>
+    <div class="card">
+      <h3>Emitted document (answers_json) — produced without generating a token</h3>
+      <div class="json" id="jsonOut"></div>
+      <h3 style="margin-top:14px">Masked LM head</h3>
+      <canvas id="vocabCv" height="80"></canvas>
+      <div class="note">One strip = the whole 151,936-token vocabulary. Only the lit option ids are scored for the selected question; everything else is masked out.</div>
+      <div class="row" id="qPick" style="margin-top:6px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 6 -->
+<section id="training">
+  <h2><span class="n">6</span>Training run <code>gotbot12345/llmm-qwen-multi-task</code> (measured)</h2>
+  <p class="lead">Values copied from the live Kaggle log. Hardware: 2× T4 in fp16, batch 4 × window 8, 1.98 s/it, peak 11.29 GiB, <code>bad=0</code>, <code>mass_err=0</code>. Hover a chart to read values.</p>
+  <div style="margin-bottom:10px">
+    <span class="stat"><b>136.13M</b><span>untied LM head alone (151,936 × 896); LoRA r16 adds ≈8.8M on top</span></span>
+    <span class="stat"><b>2325/4500</b><span>steps at last read</span></span>
+    <span class="stat"><b>0.727</b><span>action_acc @2100</span></span>
+    <span class="stat"><b>1.12 / 1.19</b><span>cycles easy / hard @2100</span></span>
+    <span class="stat"><b>11.29 G</b><span>peak VRAM</span></span>
+  </div>
+  <div class="grid g2e">
+    <div class="card"><h3>Loss components per log step</h3>
+      <div class="row" id="lossToggles" style="margin-bottom:6px"></div>
+      <canvas id="lossCv" height="260"></canvas></div>
+    <div class="card"><h3>Held-out evals</h3>
+      <table id="evalTbl"></table>
+      <canvas id="cycCv" height="150" style="margin-top:12px"></canvas>
+      <div class="note">Mean cycles used per log step. Halting settles near 1 cycle, and hard windows get only about 0.07 more than easy ones, so the loop is doing little work so far.</div>
+    </div>
+  </div>
+</section>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const C={frozen:"#4b6fa8",lora:"#b07cff",new:"#2fd1a0",loop:"#ff9f43",io:"#5cc8ff",ink:"#dfe6f3",dim:"#8a97b0",line:"#243049",gold:"#ffd166",warn:"#ff5d73"};
+const fmt=(v,d=2)=>(v>=0?"+":"")+v.toFixed(d);
+
+/* ============================================================ 1 · FLOW */
+const NODES=[
+ {id:"prompt",x:30,y:20,w:250,h:54,k:"io",t:"Prompt",s:"instruction + JSON questionnaire",
+  d:{what:"Tokenized instruction (e.g. 'pick up the blue block') followed by the questionnaire schema rendered as text. The schema is DATA, not parameters.",shape:"instr_ids (B, Ti)",init:"—",code:"QuestionBinding · render prompt"}},
+ {id:"carry",x:325,y:20,w:250,h:54,k:"new",t:"Carry token",s:"LayerNorm(carry) + carry_tag",
+  d:{what:"The previous window's final ACT-mixed latent at the last control step, fed back as a one-token prefix. The latent trajectory continues across windows (truncated BPTT) and is never re-embedded as text.",shape:"(B, 1, 896)",init:"carry_tag = 0",code:"forward §1 · mem = carry_norm(carry)+carry_tag"}},
+ {id:"state",x:620,y:20,w:250,h:54,k:"io",t:"State sentences ×S",s:"tool … vel … grip … obj … <|im_end|>",
+  d:{what:"One fixed-width sentence per control step (render_state), then one answer marker per question, closed by STATE_MARKER <|im_end|>. Any robot that can print this sentence can drive the policy.",shape:"state_ids (B, S·L)",init:"—",code:"render_state · StateWindow"}},
+ {id:"embed",x:180,y:118,w:540,h:46,k:"frozen",t:"embed_tokens  (151,936 × 896)",s:"one table for prompt AND state",
+  d:{what:"Qwen2.5 token embedding. Prompt and state share the same table, so there is no separate sensor encoder.",shape:"(B, T, 896), T = 1 + Ti + S·L",init:"pretrained, frozen",code:"trunk.embed_tokens"}},
+ {id:"pre",x:180,y:200,w:540,h:62,k:"lora",t:"Preamble: decoder layers 0 – 21",s:"run once · RoPE · causal mask · LoRA r16/α32 on q k v o gate up down",
+  d:{what:"The first L−R = 22 Qwen2.5 layers, executed once per forward. Frozen weights, each linear wrapped by LoRALinear.",shape:"(B, T, 896)",init:"LoRA B = 0 ⇒ identical to the pretrained trunk",code:"forward §2 · self._preamble"}},
+ {id:"tag",x:40,y:318,w:190,h:58,k:"new",t:"Cycle tag",s:"tanh(g_c)·sinusoid(n)",
+  d:{what:"Tells the recurrent block which cycle it is on. The sinusoidal tag is defined for every n, so --loops is only a safety ceiling and the halting head alone decides the depth.",shape:"(896,) per cycle",init:"cycle_gate = 0",code:"_cycle_tag · --cycle-tag sinusoidal"}},
+ {id:"rec",x:260,y:300,w:380,h:78,k:"loop",t:"Recurrent block: layers 22 – 23",s:"weight-tied · re-applied ≤ 6× · hidden state carried",
+  d:{what:"The last R = 2 trunk layers form the loop body. h_t is never reset between cycles. With --grad-checkpoint each cycle is recomputed in backward.",shape:"(B, T, 896)",init:"pretrained + LoRA (B = 0)",code:"forward §3 · self._recurrent"}},
+ {id:"fus",x:260,y:414,w:380,h:58,k:"new",t:"PromptFusion (8 heads)",s:"h_state + tanh(gate) · XAttn(state → prompt)",
+  d:{what:"Cross-attention from the state region to the prompt region (carry + instruction), applied every cycle. The zero gate makes it the exact identity at step 0.",shape:"q:(B, S·L, 896)  kv:(B, 1+Ti, 896)",init:"gate = 0 (out_proj default init)",code:"PromptFusion.forward"}},
+ {id:"halt",x:670,y:318,w:200,h:58,k:"new",t:"ACTHaltingHead",s:"p = σ(W·h + b)",
+  d:{what:"Halting probability per position per cycle. Halts when Σp ≥ 1−ε, and the remainder goes to that cycle. The bias is set so E[cycles] ≈ min(loops, 8) at init.",shape:"(B, T)",init:"W × 0.02, bias from expect_cycles",code:"ACTHaltingHead"}},
+ {id:"mix",x:670,y:414,w:200,h:58,k:"loop",t:"Σ α_n · h_n",s:"convex mix · ponder = Σ n·α_n",
+  d:{what:"The output state is the α-weighted sum over cycles, and Σα = 1 to 1e-4 (self-test). ponder enters the loss softly as τ·ponder (τ = 0.01).",shape:"weighted (B, T, 896)",init:"—",code:"forward §3 · weighted, mass, cost"}},
+ {id:"norm",x:180,y:510,w:540,h:44,k:"frozen",t:"trunk.norm  →  gather at markers",s:"readout = off + ans_pos[…,−1] + 1   ·   h_ans = z[off + ans_pos]",
+  d:{what:"Final RMSNorm, then gather: the action at each step's <|im_end|>, and each question at its own marker. ans_pos is STATE-RELATIVE; forgetting the offset caused the CUDA index-out-of-bounds bug.",shape:"zr (B, S, 896) · h_ans (B, S, Q, 896)",init:"frozen",code:"_read · h_ans"}},
+ {id:"lm",x:30,y:600,w:260,h:66,k:"new",t:"LM head, masked to options",s:"per question: softmax(h·W[opts]ᵀ)",
+  d:{what:"Answers are read from the model's own next-token distribution, restricted to each question's option tokens. The untied head is initialised by COPYING the embedding (a random head opened at txt ≈ 22.6 vs ln V = 11.9).",shape:"W (151,936 × 896) → q_logits {qid: (B, S, K)}",init:"copy of embed_tokens",code:"question_logits · QuestionBinding.option_weight"}},
+ {id:"act",x:320,y:600,w:260,h:66,k:"new",t:"Action head (6)",s:"LN(zr + task_proj(pool(prompt))) → MLP",
+  d:{what:"896 → 448 → GELU → 6 discrete motor actions: −x, +x, −y, +y, grasp, brake. The mean-pooled prompt is added at full strength so the head can tell which block is the target.",shape:"(B, S, 6)",init:"default",code:"action_head · task_proj · action_norm"}},
+ {id:"task",x:610,y:600,w:260,h:66,k:"new",t:"Task head + ready head",s:"reach / grasp / throw / push · early-exit",
+  d:{what:"task_head classifies the instructed task (4). ready_head (bias −1) is an optional per-cycle confidence used by --early-exit and --early-weight.",shape:"(B, S, 4) · (B, S, cycles)",init:"ready bias = −1",code:"task_head · ready_head"}},
+ {id:"out",x:180,y:700,w:540,h:44,k:"io",t:"JSON answers + motor command  →  next step's carry",s:"answers_json · render_answers",
+  d:{what:"A typed JSON document per control step (the narration) plus the action sent to the arm. The last latent becomes the next window's carry token.",shape:"dict",init:"—",code:"answers_json"}},
+];
+const EDGES=[["prompt","embed"],["carry","embed"],["state","embed"],["embed","pre"],["pre","rec"],["tag","rec"],["rec","fus"],["fus","halt"],["fus","mix"],["halt","mix"],["mix","norm"],["norm","lm"],["norm","act"],["norm","task"],["lm","out"],["act","out"],["task","out"]];
+const svg=$("#flow"), NS="http://www.w3.org/2000/svg";
+const mk=(tag,attrs,parent=svg)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);parent.appendChild(e);return e;};
+const byId=Object.fromEntries(NODES.map(n=>[n.id,n]));
+const defs=mk("defs",{});
+const mkr=mk("marker",{id:"arr",viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:7,markerHeight:7,orient:"auto"},defs);
+mk("path",{d:"M0,0 L10,5 L0,10 z",fill:C.dim},mkr);
+// loop back-edge frame
+mk("rect",{x:245,y:290,width:640,height:212,rx:14,fill:"rgba(255,159,67,.05)",stroke:C.loop,"stroke-dasharray":"4 5"});
+mk("text",{x:262,y:498,fill:C.loop,"font-size":11}).textContent="ACT loop · ≤6 cycles · h carried";
+mk("path",{d:"M 450 472 L 450 482 Q 450 486 446 486 L 256 486 Q 252 486 252 482 L 252 369 Q 252 365 256 365 L 258 365",fill:"none",stroke:C.loop,"stroke-width":1.6,"marker-end":"url(#arr)",opacity:.8});
+const edgeEls={};
+function port(n,side){return side==="b"?[n.x+n.w/2,n.y+n.h]:side==="t"?[n.x+n.w/2,n.y]:side==="r"?[n.x+n.w,n.y+n.h/2]:[n.x,n.y+n.h/2];}
+for(const [a,b] of EDGES){
+  const A=byId[a],B=byId[b];let p1,p2;
+  let d;
+  if(A.x+A.w<B.x||B.x+B.w<A.x){           // side by side → horizontal ports
+    const rt=A.x<B.x; p1=port(A,rt?"r":"l"); p2=port(B,rt?"l":"r");
+    const mx=(p1[0]+p2[0])/2; d=`M${p1[0]},${p1[1]} C${mx},${p1[1]} ${mx},${p2[1]} ${p2[0]},${p2[1]}`;
+  } else {
+    p1=port(A,"b"); p2=port(B,"t"); const my=(p1[1]+p2[1])/2;
+    d=`M${p1[0]},${p1[1]} C${p1[0]},${my} ${p2[0]},${my} ${p2[0]},${p2[1]}`;
+  }
+  edgeEls[a+">"+b]=mk("path",{d,fill:"none",stroke:C.line,"stroke-width":1.6,"marker-end":"url(#arr)"});
+}
+const nodeEls={};
+for(const n of NODES){
+  const g=mk("g",{class:"node"});
+  mk("rect",{x:n.x,y:n.y,width:n.w,height:n.h,rx:9,fill:"#121826",stroke:C[n.k],"stroke-width":1.5},g);
+  mk("rect",{x:n.x,y:n.y,width:5,height:n.h,rx:2,fill:C[n.k]},g);
+  const t=mk("text",{x:n.x+14,y:n.y+21,fill:C.ink,"font-size":13.5,"font-weight":600},g);t.textContent=n.t;
+  const s=mk("text",{x:n.x+14,y:n.y+39,fill:C.dim,"font-size":11},g);s.textContent=n.s;
+  g.addEventListener("click",()=>select(n.id));
+  nodeEls[n.id]=g;
+}
+const KIND={frozen:["p-frozen","frozen"],lora:["p-lora","frozen + LoRA"],new:["p-new","trainable"],loop:["p-loop","ACT loop"],io:["p-io","data"]};
+function select(id){
+  const n=byId[id];Object.values(nodeEls).forEach(e=>e.classList.remove("sel"));nodeEls[id].classList.add("sel");
+  const ins=EDGES.filter(e=>e[1]===id).map(e=>byId[e[0]].t), outs=EDGES.filter(e=>e[0]===id).map(e=>byId[e[1]].t);
+  for(const k in edgeEls){const on=k.startsWith(id+">")||k.endsWith(">"+id);edgeEls[k].setAttribute("stroke",on?C[n.k]:C.line);edgeEls[k].classList.toggle("flow",on);}
+  $("#detail").innerHTML=`<h3>${n.t}</h3><span class="pill ${KIND[n.k][0]}">${KIND[n.k][1]}</span>
+   <p>${n.d.what}</p><div class="kv"><div>shape</div><div class="mono">${n.d.shape}</div><div>init</div><div>${n.d.init}</div>
+   <div>code</div><div class="mono">${n.d.code}</div><div>inputs</div><div>${ins.join(", ")||"—"}</div><div>feeds</div><div>${outs.join(", ")||"—"}</div></div>`+(EXTRA[id]||"");
+}
+const EXTRA={
+ state:`<pre>tool +0.12 -0.30 +0.60 vel +0.05 +0.00 grip 0.00 obj red … green … blue … yellow …</pre>`,
+ rec:`<pre>for cycle in range(max_loops):
+    h_t = h_t + tanh(cycle_gate)*tag(cycle)
+    h_t = layers[22:24](h_t)          # weight-tied
+    h_t[state] = fusion(h_t[state], h_t[prompt])
+    p = halt_head(h_t) * active
+    ...                                # Graves remainder rule</pre>`,
+ lm:`<pre>axis_x : negative | stay | positive
+axis_y : negative | stay | positive
+gripper: open | close | stay
+intent : approach | grasp | hold
+height : down | stay | up
+speed  : slow | medium | fast   (score)</pre>`,
+ act:`<pre>0 -x   1 +x   2 -y   3 +y   4 grasp   5 brake</pre>`,
+};
+const ORDER=[["prompt","carry","state"],["embed"],["pre"],["tag"],["rec"],["fus"],["halt"],["mix"],["rec"],["fus"],["halt"],["mix"],["norm"],["lm","act","task"],["out"]];
+const NOTES=["tokens in","one embedding table","22 layers, once","cycle 1: tag","cycle 1: layers 22–23","cycle 1: fusion","cycle 1: p₁","accumulate α₁h₁","cycle 2: layers 22–23","cycle 2: fusion","cycle 2: Σp ≥ 1−ε → halt","remainder → α₂h₂","norm + gather at markers","read-outs","narrate + act → carry"];
+let animT=null;
+$("#animBtn").onclick=()=>{
+  clearInterval(animT);let i=0;
+  const hl=ids=>{Object.values(nodeEls).forEach(e=>e.style.opacity=.32);ids.forEach(id=>nodeEls[id].style.opacity=1);};
+  animT=setInterval(()=>{
+    if(i>=ORDER.length){clearInterval(animT);Object.values(nodeEls).forEach(e=>e.style.opacity=1);$("#animNote").textContent="";return;}
+    hl(ORDER[i]);$("#animNote").textContent=`${i+1}/${ORDER.length} · ${NOTES[i]}`;select(ORDER[i][0]);i++;
+  },900);
+};
+select("rec");
+
+/* ============================================================ 2 · SEQUENCE */
+const COLORS=["red","green","blue","yellow"];
+const QIDS=["axis_x","axis_y","gripper","intent","height","speed"];
+const TPL={reach:"reach the {c} block",grasp:"pick up the {c} block",throw:"throw the {c} block",push:"push the {c} block"};
+function renderState(tool,vel,grip,rel){
+  return "tool "+tool.map(v=>fmt(v)).join(" ")+" vel "+vel.map(v=>fmt(v)).join(" ")+" grip "+grip.toFixed(2)+" obj "+
+    COLORS.map((c,i)=>c+" "+rel[i].map(v=>fmt(v)).join(" ")).join(" ");
+}
+const OBJ=[[-.5,.4,.1],[.6,.55,.1],[.35,-.35,.1],[-.2,-.7,.1]];
+function seqTokens(){
+  const S=+$("#sS").value, carry=$("#sCarry").checked, color=$("#sColor").value, task=$("#sTask").value;
+  const toks=[];
+  if(carry) toks.push({t:"⟨carry⟩",c:"carry",r:"carry token: LayerNorm(prev latent) + carry_tag. Not a vocabulary token."});
+  TPL[task].replace("{c}",color).split(" ").forEach(w=>toks.push({t:w,c:"instr",r:"instruction token (prompt region)"}));
+  ('{"questions":{'+QIDS.map(q=>`"${q}":…`).join(",")+"}}").split(/(?<=,)/).forEach(w=>toks.push({t:w,c:"schema",r:"questionnaire schema, rendered into the prompt. It is data, so a different schema can be sent to the same weights."}));
+  const off=toks.length; const Ti=off-(carry?1:0);
+  let tool=[+$("#tx").value,+$("#ty").value,+$("#tz").value];let vel=[+$("#vx").value,0];const grip=+$("#gp").value;
+  const stepStarts=[];
+  for(let s=0;s<S;s++){
+    stepStarts.push(toks.length);
+    const rel=OBJ.map(o=>[o[0]-tool[0],o[1]-tool[1],o[2]-tool[2]]);
+    renderState(tool,vel,grip,rel).split(" ").forEach(w=>toks.push({t:w,c:"state",r:`state sentence, step ${s+1}`,s}));
+    QIDS.forEach((q,qi)=>toks.push({t:`⟨${q}⟩`,c:"qm",r:`answer marker for "${q}", step ${s+1}. Its hidden state is scored against this question's option tokens.`,s,q:qi}));
+    toks.push({t:"<|im_end|>",c:"sm",r:`STATE_MARKER, step ${s+1}. The 6-way action is read here (readout = off + ans_pos[…,−1] + 1).`,s});
+    const tgt=OBJ[COLORS.indexOf(color)];tool=tool.map((v,i)=>v+0.25*Math.sign(tgt[i]-v)*Math.min(1,Math.abs(tgt[i]-v)*3));vel=[tool[0]*0+0.1,0.05];
+  }
+  return {toks,off,Ti,S,stepStarts,L:stepStarts.length>1?stepStarts[1]-stepStarts[0]:toks.length-stepStarts[0]};
+}
+function drawSeq(){
+  ["tx","ty","tz","vx","gp"].forEach(id=>$("#v"+id).textContent=(+$("#"+id).value).toFixed(2));$("#vS").textContent=$("#sS").value;
+  const {toks,off,Ti,S,L}=seqTokens();const box=$("#tokens");box.innerHTML="";
+  toks.forEach((k,i)=>{
+    if(k.c==="state"&&toks[i-1]&&toks[i-1].c!=="state"&&i>=off){const br=document.createElement("div");br.className="stepsep";box.appendChild(br);}
+    const e=document.createElement("span");e.className="tok "+k.c;e.textContent=k.t;
+    e.onmouseenter=()=>{
+      let rel=i>=off?`state-relative index ${i-off} (step ${k.s+1}: s·L + ${i-off-k.s*L})`:"prompt region";
+      $("#hoverInfo").innerHTML=`<b style="color:var(--ink)">${k.t}</b> · absolute position ${i} · ${rel}<br>${k.r}`+
+        (k.c==="state"||k.c==="qm"||k.c==="sm"?"<br><span style='color:var(--new)'>PromptFusion: this position cross-attends to every highlighted prompt token.</span>":"");
+      $$("#tokens .tok").forEach((t,j)=>{t.classList.toggle("hl",(k.c==="state"||k.c==="qm"||k.c==="sm")&&j<off);t.classList.toggle("dim",(k.c==="state"||k.c==="qm"||k.c==="sm")&&j>i);});
+    };
+    e.onmouseleave=()=>$$("#tokens .tok").forEach(t=>t.classList.remove("hl","dim"));
+    box.appendChild(e);
+  });
+  $("#idxInfo").innerHTML=`T = ${toks.length} tokens · off = n_mem + Ti = ${off} · L = ${L} tokens/step · Q = 6<br>ans_pos[b,s,q] = s·L + (L−1−Q+q)  →  step 1: [${QIDS.map((_,q)=>L-1-6+q).join(", ")}], action at ${L-1}`;
+}
+["sS","sCarry","sTask","sColor","tx","ty","tz","vx","gp"].forEach(id=>$("#"+id).addEventListener("input",drawSeq));
+drawSeq();
+
+/* ============================================================ 3 · ACT */
+const MAXL=6;let P=[0.35,0.3,0.25,0.3,0.4,0.5];
+const PRESETS={easy:[0.93,0.5,0.5,0.5,0.5,0.5],hard:[0.2,0.15,0.25,0.3,0.5,0.6],never:[0.02,0.02,0.02,0.02,0.02,0.02],init:[0.17,0.17,0.17,0.17,0.17,0.17]};
+function buildP(){const box=$("#pSliders");box.innerHTML="";P.forEach((p,i)=>{
+  const l=document.createElement("label");l.className="ctl";
+  l.innerHTML=`p<sub>${i+1}</sub><input type="range" min="0" max="1" step="0.01" value="${p}"><span class="v"></span>`;
+  const r=l.querySelector("input");r.oninput=()=>{P[i]=+r.value;runACT();};box.appendChild(l);});}
+function actCompute(P,eps){
+  let cum=0,halted=false,alphas=[],cost=0,mass=0,used=0,haltAt=-1;
+  for(let n=0;n<MAXL;n++){
+    if(halted)break;used++;
+    const p=P[n];let a;
+    if(cum+p>=1-eps){a=Math.max(0,1-cum);halted=true;haltAt=n;cum=1;}else{a=p;cum+=p;}
+    alphas.push(a);mass+=a;cost+=a*(n+1);
+  }
+  if(!halted){const cl=Math.max(0,1-mass);alphas[alphas.length-1]+=cl;mass+=cl;cost+=cl*used;}
+  return {alphas,cost,mass,used,haltAt};
+}
+function rng(seed){return()=>{seed=(seed*16807)%2147483647;return (seed-1)/2147483646;};}
+function runACT(){
+  const eps=+$("#eps").value,tau=+$("#tau").value;$("#vEps").textContent=eps.toFixed(2);$("#vTau").textContent=tau.toFixed(3);
+  $$("#pSliders .v").forEach((v,i)=>v.textContent=P[i].toFixed(2));
+  $$("#pSliders input").forEach((r,i)=>r.value=P[i]);
+  const R=actCompute(P,eps);
+  $("#alphaBars").innerHTML=Array.from({length:MAXL},(_,n)=>{
+    const a=R.alphas[n];const skipped=a===undefined;
+    return `<div class="optrow"><span class="mono">cycle ${n+1}</span><div class="track"><div class="fill" style="width:${skipped?0:a*100}%;background:${n===R.haltAt?C.gold:C.loop}"></div></div>
+      <span class="mono" style="color:${skipped?C.dim:C.ink}">${skipped?"skip":a.toFixed(3)}</span></div>`;}).join("");
+  $("#actStats").innerHTML=`<span class="stat"><b>${R.used}</b><span>cycles computed</span></span>
+    <span class="stat"><b>${R.cost.toFixed(3)}</b><span>ponder Σn·α</span></span>
+    <span class="stat"><b>${(tau*R.cost).toFixed(4)}</b><span>τ·ponder (loss)</span></span>
+    <span class="stat"><b class="${Math.abs(R.mass-1)<1e-4?"ok":"warn"}">${Math.abs(R.mass-1).toExponential(1)}</b><span>mass_err |Σα−1|</span></span>
+    <div class="note">${R.haltAt>=0?`Halted at cycle ${R.haltAt+1}: Σp crossed 1−ε, and its α is the remainder (gold).`:"Never crossed 1−ε. The leftover mass is closed onto the last cycle (the --loops safety ceiling)."}</div>`;
+  drawTraj(R);
+}
+function drawTraj(R){
+  const cv=$("#traj"),W=cv.width=cv.clientWidth*devicePixelRatio,H=cv.height=210*devicePixelRatio,x=cv.getContext("2d");x.scale(devicePixelRatio,devicePixelRatio);
+  const w=W/devicePixelRatio,h=210;const r=rng(7);let pts=[[w*.15,h*.7]];
+  for(let n=1;n<MAXL;n++){const [a,b]=pts[n-1];pts.push([a+w*.12+r()*w*.05,b-35+r()*50-15*Math.sin(n)]);}
+  x.strokeStyle="#2a3550";x.setLineDash([3,4]);x.beginPath();pts.forEach((p,i)=>i?x.lineTo(...p):x.moveTo(...p));x.stroke();x.setLineDash([]);
+  x.strokeStyle=C.loop;x.lineWidth=2;x.beginPath();pts.slice(0,R.used).forEach((p,i)=>i?x.lineTo(...p):x.moveTo(...p));x.stroke();
+  pts.forEach((p,i)=>{const on=i<R.used;x.fillStyle=on?C.loop:"#2a3550";x.beginPath();x.arc(p[0],p[1],3+(on?R.alphas[i]*9:0),0,7);x.fill();
+    x.fillStyle=on?C.ink:C.dim;x.font="11px Segoe UI";x.fillText("h"+(i+1),p[0]-6,p[1]-12-(on?R.alphas[i]*9:0));});
+  let m=[0,0];R.alphas.forEach((a,i)=>{m[0]+=a*pts[i][0];m[1]+=a*pts[i][1];});
+  x.strokeStyle=C.gold;x.lineWidth=2.5;x.beginPath();x.arc(m[0],m[1],9,0,7);x.stroke();x.fillStyle=C.gold;x.beginPath();x.arc(m[0],m[1],3,0,7);x.fill();
+  x.fillText("Σα·h  → read-out / carry",m[0]+13,m[1]+18);
+}
+$$("[data-preset]").forEach(b=>b.onclick=()=>{P=PRESETS[b.dataset.preset].slice();runACT();});
+$("#eps").oninput=runACT;$("#tau").oninput=runACT;buildP();runACT();
+
+/* ============================================================ 4 · GATES / LoRA */
+function drawGate(){
+  const g=+$("#gG").value,t=Math.tanh(g);$("#vG").textContent=g.toFixed(2);
+  const cv=$("#gateCv"),x=cv.getContext("2d"),W=cv.width=cv.clientWidth*devicePixelRatio,H=cv.height=200*devicePixelRatio;x.scale(devicePixelRatio,devicePixelRatio);
+  const w=W/devicePixelRatio,h=200,cx=w/2,cy=h/2+10,sc=70;
+  const hs=[1.1,-0.4],out=[-0.3,1.0],res=[hs[0]+t*out[0],hs[1]+t*out[1]];
+  x.strokeStyle="#1d2638";for(let i=-4;i<=4;i++){x.beginPath();x.moveTo(cx+i*sc/2,10);x.lineTo(cx+i*sc/2,h-10);x.stroke();}
+  const arrow=(from,v,col,lab,off=[6,-4])=>{const a=[cx+from[0]*sc,cy-from[1]*sc],b=[cx+(from[0]+v[0])*sc,cy-(from[1]+v[1])*sc];
+    x.strokeStyle=col;x.fillStyle=col;x.lineWidth=2.4;x.beginPath();x.moveTo(...a);x.lineTo(...b);x.stroke();
+    const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);x.beginPath();x.moveTo(...b);x.lineTo(b[0]-9*Math.cos(ang-.4),b[1]-9*Math.sin(ang-.4));x.lineTo(b[0]-9*Math.cos(ang+.4),b[1]-9*Math.sin(ang+.4));x.fill();
+    x.font="12px Segoe UI";x.fillText(lab,b[0]+off[0],b[1]+off[1]);};
+  arrow([0,0],hs,C.frozen,"h_state",[6,14]);
+  x.globalAlpha=.35;arrow(hs,out,C.new,"XAttn out",[8,-2]);x.globalAlpha=1;
+  if(Math.abs(t)>1e-3)arrow(hs,[t*out[0],t*out[1]],C.new,`tanh(g)·out`,[10,4]);
+  arrow([0,0],res,C.gold,"fused",[-44,-6]);
+  $("#gateNote").innerHTML=`tanh(g) = <b class="mono">${t.toFixed(4)}</b> · ‖fused − h_state‖ = <b class="mono">${(Math.abs(t)*Math.hypot(...out)).toFixed(4)}</b>`+
+    (Math.abs(t)<1e-6?` · <span class="ok">exact identity (self-test: max|Δ| = 0)</span>`:"")+
+    `<br>The run's old log printed <code>gate=0.000</code> from a stats key that was never written. The corrected log line prints <code>tanh(fusion.gate)</code>, so the next run will show how far this gate has opened.`;
+}
+$("#gG").oninput=drawGate;drawGate();
+function drawLora(){
+  const r=+$("#lr").value,a=+$("#la").value,b=+$("#lb").value;$("#vlr").textContent=r;$("#vla").textContent=a;$("#vlb").textContent=b.toFixed(2);
+  const H=896,I=4864; // Qwen2.5-0.5B: hidden 896, intermediate 4864, 14 q heads, 2 kv heads (kv dim 128)
+  const shapes=[["q_proj",H,H],["k_proj",H,128],["v_proj",H,128],["o_proj",H,H],["gate_proj",H,I],["up_proj",H,I],["down_proj",I,H]];
+  const perLayer=shapes.reduce((s,[,i,o])=>s+r*(i+o),0),tot=perLayer*24;
+  $("#loraOut").innerHTML=`<table><tr><th>proj</th><th>in→out</th><th>LoRA params (r=${r})</th></tr>`+
+    shapes.map(([n,i,o])=>`<tr><td class="mono">${n}</td><td class="mono">${i}→${o}</td><td class="mono">${(r*(i+o)).toLocaleString()}</td></tr>`).join("")+
+    `<tr><td><b>× 24 layers</b></td><td></td><td class="mono"><b>${tot.toLocaleString()}</b></td></tr></table>
+    <div class="note">scale α/r = <b class="mono">${(a/r).toFixed(2)}</b> · ‖ΔW‖ ∝ scale·‖B‖·‖A‖ = <b class="mono ${b===0?"ok":""}">${(a/r*b).toFixed(3)}</b>${b===0?" → the trunk is unchanged":""}. Shapes assume Qwen2.5-0.5B GQA (k/v out = 2 heads × 64 = 128). For scale: the untied LM head alone is 151,936 × 896 = 136.13M parameters, about 15× the LoRA total at r = 16.</div>`;
+}
+["lr","la","lb"].forEach(id=>$("#"+id).oninput=drawLora);drawLora();
+
+/* ============================================================ 5 · READ-OUT */
+const QS={axis_x:["negative","stay","positive"],axis_y:["negative","stay","positive"],gripper:["open","close","stay"],
+          intent:["approach","grasp","hold"],height:["down","stay","up"],speed:["slow","medium","fast"]};
+const ACTS=["-x","+x","-y","+y","grasp","brake"];
+let qSel="axis_x";
+const softmax=v=>{const m=Math.max(...v),e=v.map(z=>Math.exp(z-m)),s=e.reduce((a,b)=>a+b);return e.map(z=>z/s);};
+function heur(dx,dy,dz,hold,k){
+  const ax=v=>[-v,0.25-Math.abs(v)*1.5,v].map(z=>z*k);
+  const near=Math.hypot(dx,dy)<0.12, dist=Math.hypot(dx,dy,dz);
+  return {
+    axis_x:softmax(ax(dx*3)),axis_y:softmax(ax(dy*3)),
+    gripper:softmax([hold?-2:(near?-1:0.3),(!hold&&near)?2:-1,hold?2:0.5].map(z=>z*k)),
+    intent:softmax([near?-1:1.5,(!hold&&near)?2:-1,hold?2:-1].map(z=>z*k)),
+    height:softmax([-dz*3,0.25-Math.abs(dz)*2,dz*3].map(z=>z*k)),
+    speed:softmax([0.4-dist*2,0.3,dist*2-0.6].map(z=>z*k)),
+    action:softmax([-dx*3,dx*3,-dy*3,dy*3,(!hold&&near)?2.5:-1,dist<0.08?2:-1].map(z=>z*k)),
+  };
+}
+function runReadout(){
+  const dx=+$("#rdx").value,dy=+$("#rdy").value,dz=+$("#rdz").value,hold=+$("#rgr").value,k=+$("#rtemp").value;
+  $("#vrdx").textContent=fmt(dx);$("#vrdy").textContent=fmt(dy);$("#vrdz").textContent=fmt(dz);$("#vrgr").textContent=hold?"yes":"no";$("#vrtemp").textContent=k.toFixed(1);
+  const pr=heur(dx,dy,dz,hold,k);
+  $("#qBars").innerHTML=Object.keys(QS).map(q=>{
+    const p=pr[q],top=p.indexOf(Math.max(...p));
+    return `<div style="margin-top:6px;cursor:pointer" data-q="${q}"><span class="mono" style="color:${q===qSel?C.gold:C.io}">${q}</span></div>`+
+      QS[q].map((o,i)=>`<div class="optrow ${i===top?"top":""}"><span class="mono">${o}</span><div class="track"><div class="fill" style="width:${p[i]*100}%"></div></div><span class="mono">${p[i].toFixed(2)}</span></div>`).join("");
+  }).join("")+`<div style="margin-top:8px"><span class="mono" style="color:var(--new)">action head (6)</span></div>`+
+    ACTS.map((o,i)=>{const top=pr.action.indexOf(Math.max(...pr.action));return `<div class="optrow ${i===top?"top":""}"><span class="mono">${o}</span><div class="track"><div class="fill" style="width:${pr.action[i]*100}%"></div></div><span class="mono">${pr.action[i].toFixed(2)}</span></div>`;}).join("");
+  $$("#qBars [data-q]").forEach(e=>e.onclick=()=>{qSel=e.dataset.q;runReadout();});
+  const doc={};Object.keys(QS).forEach(q=>{const p=pr[q],i=p.indexOf(Math.max(...p));
+    doc[q]=QS[q][0]==="slow"?{score:+p.reduce((s,v,j)=>s+v*j,0).toFixed(4),level:QS[q][i]}:{choice:QS[q][i],confidence:+p[i].toFixed(4)};});
+  const ai=pr.action.indexOf(Math.max(...pr.action));doc.action={choice:ACTS[ai],confidence:+pr.action[ai].toFixed(4)};
+  $("#jsonOut").innerHTML=JSON.stringify(doc,null,2).replace(/"(\w+)":/g,'<span class="k">"$1"</span>:').replace(/: "([^"]*)"/g,': <span class="s">"$1"</span>').replace(/: ([\d.\-e]+)/g,': <span class="num">$1</span>');
+  $("#qPick").innerHTML=Object.keys(QS).map(q=>`<button class="${q===qSel?"on":""}" data-p="${q}">${q}</button>`).join("");
+  $$("#qPick [data-p]").forEach(b=>b.onclick=()=>{qSel=b.dataset.p;runReadout();});
+  drawVocab(pr[qSel]);
+}
+function drawVocab(p){
+  const cv=$("#vocabCv"),x=cv.getContext("2d"),W=cv.width=cv.clientWidth*devicePixelRatio,H=cv.height=80*devicePixelRatio;x.scale(devicePixelRatio,devicePixelRatio);
+  const w=W/devicePixelRatio,V=151936;x.fillStyle="#141b2a";x.fillRect(0,22,w,26);
+  const r=rng(QIDS.indexOf(qSel)+3);
+  for(let i=0;i<w;i+=2){x.fillStyle=`rgba(80,100,140,${0.08+r()*0.1})`;x.fillRect(i,22,1,26);}
+  const opts=QS[qSel];opts.forEach((o,i)=>{
+    let id=0;for(const ch of o+qSel)id=(id*131+ch.charCodeAt(0))%V; // illustrative token ids
+    const px=id/V*w;x.fillStyle=C.gold;x.globalAlpha=0.35+0.65*p[i];x.fillRect(px-2,22,4,26);x.globalAlpha=1;
+    const lx=8+i*(w-16)/opts.length;             // evenly spaced labels + leader line
+    x.strokeStyle="rgba(255,209,102,.45)";x.lineWidth=1;x.beginPath();x.moveTo(px,48);x.lineTo(lx+4,62);x.stroke();
+    x.fillStyle=C.ink;x.font="11px Consolas";x.fillText(`${o} ${p[i].toFixed(2)}`,lx,74);
+  });
+}
+["rdx","rdy","rdz","rgr","rtemp"].forEach(id=>$("#"+id).oninput=runReadout);runReadout();
+
+/* ============================================================ 6 · TRAINING */
+// step, loss, act, pov, q, txt, cycles, gn   (copied from the live Kaggle log)
+const LOG=[[325,2.55,1.25,null,0.49,0.015,1.12,null],
+[1450,.9457,.5771,1.000,.177,.010,1.00,3.55],[1475,1.7530,.9869,1.250,.375,.008,1.25,9.41],[1500,1.1612,.7240,1.284,.210,.010,1.50,4.00],
+[1525,1.0086,.6137,1.000,.190,.010,1.00,4.63],[1550,1.2347,.7362,1.187,.241,.010,1.19,5.51],[1575,.4413,.2583,1.417,.082,.011,1.47,3.82],
+[1600,1.9713,1.0263,1.286,.464,.010,1.38,19.89],[1625,1.3578,.8568,1.000,.243,.009,1.00,4.12],[1650,2.3490,1.0114,1.075,.661,.010,1.09,46.16],
+[1675,.8719,.5199,1.475,.165,.013,1.75,3.98],[1700,.4458,.2076,1.328,.110,.009,1.38,2.94],[1725,.7343,.3732,1.000,.172,.013,1.00,3.34],
+[1750,1.4703,.8752,1.250,.288,.010,1.25,3.87],[1775,1.0107,.4991,1.250,.248,.007,1.25,4.15],[1800,1.4434,.4989,1.152,.464,.008,1.34,48.74],
+[1825,.8597,.5131,1.000,.165,.013,1.00,3.75],[1850,1.8723,1.1935,1.032,.332,.009,1.06,5.78],[1875,1.2636,.6045,1.457,.319,.011,1.72,6.09],
+[1900,2.0846,1.1742,1.119,.448,.007,1.19,27.15],[1925,1.1090,.6267,1.000,.234,.010,1.00,6.60],[1950,.9572,.5627,1.003,.190,.010,1.06,4.26],
+[1975,1.5739,.7433,1.091,.407,.010,1.16,12.51],[2000,.7475,.4361,1.104,.148,.010,1.19,6.90],[2025,1.1298,.7610,1.063,.177,.009,1.09,6.60],
+[2050,.5757,.3200,1.063,.120,.009,1.09,3.83],[2075,.4446,.1942,1.282,.115,.014,1.31,2.46],[2100,.7037,.3959,1.312,.145,.008,1.31,5.40],
+[2125,.7014,.3513,1.000,.167,.012,1.00,3.81],[2150,1.2728,.6566,1.000,.301,.009,1.00,7.78],[2175,.7735,.5111,1.000,.124,.009,1.00,4.79],
+[2200,.8850,.5159,1.122,.177,.007,1.22,4.69],[2225,1.5255,.8470,1.000,.331,.013,1.00,6.47],[2250,.3265,.1678,1.250,.070,.014,1.25,3.20],
+[2275,1.0788,.6281,1.161,.217,.009,1.22,5.23],[2300,.5819,.2861,1.001,.141,.008,1.03,5.54],[2325,.3943,.1776,1.000,.100,.013,1.00,3.21]].filter(r=>r[0]>=1450);
+const SERIES=[["loss",1,C.ink],["act",2,C.loop],["q",4,C.new],["txt",5,C.io],["grad-norm ÷10",7,C.warn,0.1]];
+const shown=new Set(["loss","act","q"]);
+$("#lossToggles").innerHTML=SERIES.map(s=>`<button data-s="${s[0]}" class="${shown.has(s[0])?"on":""}">${s[0]}</button>`).join("");
+$$("#lossToggles button").forEach(b=>b.onclick=()=>{shown.has(b.dataset.s)?shown.delete(b.dataset.s):shown.add(b.dataset.s);b.classList.toggle("on");drawLoss();});
+function chart(cv,h,series,ymax,hoverIdx){
+  const x=cv.getContext("2d"),W=cv.width=cv.clientWidth*devicePixelRatio;cv.height=h*devicePixelRatio;x.scale(devicePixelRatio,devicePixelRatio);
+  const w=W/devicePixelRatio,L=38,R=10,T=10,B=22,x0=LOG[0][0],x1=LOG[LOG.length-1][0];
+  const X=s=>L+(s-x0)/(x1-x0)*(w-L-R),Y=v=>T+(1-v/ymax)*(h-T-B);
+  x.strokeStyle="#1d2638";x.fillStyle=C.dim;x.font="10.5px Consolas";
+  for(let i=0;i<=4;i++){const v=ymax*i/4;x.beginPath();x.moveTo(L,Y(v));x.lineTo(w-R,Y(v));x.stroke();x.fillText(v.toFixed(v<2?2:1),2,Y(v)+3);}
+  [1500,1800,2100].forEach(s=>{x.strokeStyle="rgba(255,209,102,.25)";x.setLineDash([2,4]);x.beginPath();x.moveTo(X(s),T);x.lineTo(X(s),h-B);x.stroke();x.setLineDash([]);x.fillStyle=C.gold;x.fillText("eval",X(s)-10,h-B+14);});
+  x.fillStyle=C.dim;x.fillText(x0,L,h-4);x.fillText(x1,w-R-28,h-4);
+  series.forEach(([name,col,sc,colr])=>{x.strokeStyle=colr;x.lineWidth=1.6;x.beginPath();
+    LOG.forEach((r,i)=>{const v=Math.min(ymax,r[col]*(sc||1));i?x.lineTo(X(r[0]),Y(v)):x.moveTo(X(r[0]),Y(v));});x.stroke();});
+  if(hoverIdx!=null){const r=LOG[hoverIdx];x.strokeStyle=C.dim;x.beginPath();x.moveTo(X(r[0]),T);x.lineTo(X(r[0]),h-B);x.stroke();
+    const lines=[`step ${r[0]}`,...series.map(([n,c,sc])=>`${n}: ${(r[c]).toFixed(3)}`)];
+    const bx=Math.min(X(r[0])+8,w-150);x.fillStyle="rgba(10,14,22,.92)";x.fillRect(bx,T+4,140,lines.length*14+8);
+    x.fillStyle=C.ink;lines.forEach((l,i)=>x.fillText(l,bx+6,T+18+i*14));}
+  return {X,L,R,w};
+}
+let hoverL=null,hoverC=null;
+function drawLoss(){chart($("#lossCv"),260,SERIES.filter(s=>shown.has(s[0])).map(s=>[s[0],s[1],s[3],s[2]]),2.5,hoverL);}
+function drawCyc(){chart($("#cycCv"),150,[["cycles",6,1,C.loop],["pov",3,1,C.gold]],2,hoverC);}
+function hoverOf(cv,e){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,L=38,R=10,x0=LOG[0][0],x1=LOG[LOG.length-1][0];
+  const s=x0+(px-L)/(r.width-L-R)*(x1-x0);let best=0;LOG.forEach((row,i)=>{if(Math.abs(row[0]-s)<Math.abs(LOG[best][0]-s))best=i;});return best;}
+$("#lossCv").onmousemove=e=>{hoverL=hoverOf($("#lossCv"),e);drawLoss();};$("#lossCv").onmouseleave=()=>{hoverL=null;drawLoss();};
+$("#cycCv").onmousemove=e=>{hoverC=hoverOf($("#cycCv"),e);drawCyc();};$("#cycCv").onmouseleave=()=>{hoverC=null;drawCyc();};
+const EV=[["1500",.754,.98,.54,.81,.77,.80,1.18,1.25],["1800",.707,.97,.47,.77,.73,.74,1.11,1.19],["2100",.727,.97,.58,.71,.80,.80,1.12,1.19]];
+const heat=v=>`background:rgba(${v<.6?"255,93,115":v<.8?"255,159,67":"47,209,160"},${0.12+0.25*(v<.6?1-v:v)})`;
+$("#evalTbl").innerHTML=`<tr><th>step</th><th>action</th><th>grasp</th><th>throw</th><th>push</th><th>axis_x</th><th>axis_y</th><th>cyc easy</th><th>cyc hard</th></tr>`+
+  EV.map(r=>`<tr>${r.map((v,i)=>`<td class="mono" style="${i>=1&&i<=6?heat(v):""}">${typeof v==="number"?v.toFixed(2):v}</td>`).join("")}</tr>`).join("")+
+  `<tr><td colspan="9" class="note" style="text-align:left">gripper / intent / height / speed: 0.96 – 1.00 in all three evals.</td></tr>`;
+function redrawAll(){drawLoss();drawCyc();drawGate();runACT();runReadout();}
+window.addEventListener("resize",redrawAll);drawLoss();drawCyc();
+
+/* nav highlight */
+const secs=$$("section");addEventListener("scroll",()=>{let cur=secs[0].id;secs.forEach(s=>{if(s.getBoundingClientRect().top<120)cur=s.id;});
+  $$("#nav a").forEach(a=>a.classList.toggle("on",a.getAttribute("href")==="#"+cur));});
+</script>
+</body>
+</html>
